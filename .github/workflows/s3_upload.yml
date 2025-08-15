@@ -5,8 +5,8 @@ on:
     branches: [ main ]
 
 env:
-  TARGET_DIR: "project/assets"   # Путь в бакете (измените на свой)
-  SOURCE_DIR: "./build"          # Локальная папка с файлами (измените на свою)
+  TARGET_DIR: "project/assets"
+  SOURCE_DIR: "./build"
 
 jobs:
   deploy:
@@ -16,27 +16,32 @@ jobs:
       options: --user root
 
     steps:
-      # Шаг 1: Получение кода из репозитория
+      - name: Install required tools
+        run: |
+          apt-get update && apt-get install -y tar gzip
+
       - name: Checkout code
         uses: actions/checkout@v4
-        
-      # Шаг 2: Настройка AWS CLI для Yandex Cloud
+
       - name: Configure AWS CLI
         run: |
           aws configure set aws_access_key_id ${{ secrets.YC_S3_ACCESS_KEY }}
           aws configure set aws_secret_access_key ${{ secrets.YC_S3_SECRET_KEY }}
           aws configure set default.region ru-central1
-          
-      # Шаг 3: Загрузка ВСЕХ файлов, КРОМЕ JavaScript
+
+      - name: Verify build directory
+        run: |
+          echo "Contents of build directory:"
+          ls -la ${{ env.SOURCE_DIR }}
+
       - name: Upload non-JS files
         run: |
           aws --endpoint-url ${{ secrets.YC_S3_ENDPOINT }} s3 sync ${{ env.SOURCE_DIR }} s3://${{ secrets.YC_S3_BUCKET }}/${{ env.TARGET_DIR }} \
             --exclude "*.js" \
             --acl public-read \
             --delete
-            
-      # Шаг 4: Загрузка ТОЛЬКО JavaScript файлов с правильным Content-Type
-      - name: Upload JS files with correct content-type
+
+      - name: Upload JS files
         run: |
           aws --endpoint-url ${{ secrets.YC_S3_ENDPOINT }} s3 sync ${{ env.SOURCE_DIR }} s3://${{ secrets.YC_S3_BUCKET }}/${{ env.TARGET_DIR }} \
             --exclude "*" \
@@ -45,9 +50,8 @@ jobs:
             --acl public-read \
             --cache-control "max-age=31536000,public" \
             --delete
-            
-      # Шаг 5: Обновление Content-Type для ВСЕХ JS файлов в бакете
-      - name: Update JS Files MIME Type
+
+      - name: Fix JS files MIME type
         run: |
           aws --endpoint-url ${{ secrets.YC_S3_ENDPOINT }} s3 cp \
             s3://${{ secrets.YC_S3_BUCKET }}/${{ env.TARGET_DIR }} \
